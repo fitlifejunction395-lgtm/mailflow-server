@@ -47,6 +47,22 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
+// ── Connect to DB & init transport on first request (for Vercel) ──
+let isInitialized = false;
+app.use(async (req, res, next) => {
+    if (!isInitialized) {
+        try {
+            await connectDB();
+            createTransporter();
+            isInitialized = true;
+        } catch (error) {
+            console.error('Initialization error:', error);
+            return res.status(500).json({ success: false, message: 'Server initialization failed' });
+        }
+    }
+    next();
+});
+
 // ── Routes ───────────────────────────────────
 app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/emails', require('./routes/emails'));
@@ -70,21 +86,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-// ── Connect to DB & init transport on first request (for Vercel) ──
-let isInitialized = false;
-app.use(async (req, res, next) => {
-    if (!isInitialized) {
-        try {
-            await connectDB();
-            createTransporter();
-            isInitialized = true;
-        } catch (error) {
-            console.error('Initialization error:', error);
-            return res.status(500).json({ success: false, message: 'Server initialization failed' });
-        }
-    }
-    next();
-});
+
 
 // ── Start Server (local only) ────────────────
 if (process.env.NODE_ENV !== 'production') {

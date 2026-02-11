@@ -9,13 +9,13 @@ const initGemini = () => {
         return;
     }
     genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 };
 
 // Ensure initialized
 const getModel = () => {
     if (!model) initGemini();
-    if (!model) throw new Error('Gemini API not configured');
+    if (!model) throw new Error('Gemini API Key is missing in Vercel Environment Variables. Please add GEMINI_API_KEY in Vercel Settings.');
     return model;
 };
 
@@ -29,7 +29,7 @@ const summarizeEmail = async (content) => {
         return response.text();
     } catch (error) {
         console.error('Gemini Summarize Error:', error);
-        throw new Error('Failed to summarize email.');
+        throw new Error(`Summarize failed: ${error.message}`);
     }
 };
 
@@ -48,6 +48,8 @@ const generateSmartReplies = async (content) => {
         return JSON.parse(cleanText);
     } catch (error) {
         console.error('Gemini Smart Reply Error:', error);
+        // If it's a configuration error, we might want to let the user know, but for replies, fallback is safer UI-wise unless debugging.
+        // But since user is debugging, logging the error is key.
         return ["Sounds good!", "I'll get back to you.", "received, thanks."]; // Fallback
     }
 };
@@ -62,7 +64,7 @@ const helpMeWrite = async (userPrompt) => {
         return response.text();
     } catch (error) {
         console.error('Gemini Help Me Write Error:', error);
-        throw new Error('Failed to generate draft.');
+        throw new Error(`Draft generation failed: ${error.message}`);
     }
 };
 

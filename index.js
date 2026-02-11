@@ -69,6 +69,7 @@ app.use('/api/auth', authLimiter, require('./routes/auth'));
 app.use('/api/emails', require('./routes/emails'));
 app.use('/api/auth', require('./routes/googleAuth'));
 app.use('/api/gmail', require('./routes/gmail'));
+app.use('/api/ai', require('./routes/ai'));
 
 // ── Health Check ─────────────────────────────
 app.get('/api/health', (req, res) => {

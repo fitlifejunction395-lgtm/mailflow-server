@@ -34,12 +34,17 @@ router.get('/google', verifyToken, (req, res) => {
  * GET /api/auth/google/callback
  * Handle Google OAuth callback — exchange code for tokens.
  */
+/**
+ * GET /api/auth/google/callback
+ * Handle Google OAuth callback — exchange code for tokens.
+ * Handles both "Connect Gmail" (state=userId) and "Sign in with Google" (state='login').
+ */
 router.get('/google/callback', async (req, res) => {
     try {
-        const { code, state: userId } = req.query;
+        const { code, state } = req.query;
 
-        if (!code || !userId) {
-            return res.redirect(`${process.env.CLIENT_URL}/mail/inbox?error=missing_code`);
+        if (!code) {
+            return res.redirect(`${process.env.CLIENT_URL}/login?error=missing_code`);
         }
 
         const oauth2Client = createOAuth2Client();
@@ -48,6 +53,69 @@ router.get('/google/callback', async (req, res) => {
 
         // Get users Gmail address
         const profile = await getGmailProfile(tokens);
+        const email = profile.emailAddress;
+
+        // ─────────────────────────────────────────────
+        // CASE 1: LOGIN / SIGNUP (state === 'login')
+        // ─────────────────────────────────────────────
+        if (state === 'login') {
+            // Find or create user
+            let user = await User.findOne({ email });
+
+            if (!user) {
+                // Create new user
+                const randomPassword = crypto.randomBytes(16).toString('hex');
+                const name = email.split('@')[0];
+
+                user = await User.create({
+                    name,
+                    email,
+                    password: randomPassword,
+                    googleEmail: email,
+                    isGmailConnected: true,
+                    googleTokens: {
+                        accessToken: tokens.access_token,
+                        refreshToken: tokens.refresh_token,
+                        expiryDate: tokens.expiry_date,
+                    },
+                });
+            } else {
+                // Update existing user with Google tokens if not connected
+                if (!user.isGmailConnected) {
+                    user.isGmailConnected = true;
+                    user.googleEmail = email;
+                    user.googleTokens = {
+                        accessToken: tokens.access_token,
+                        refreshToken: tokens.refresh_token,
+                        expiryDate: tokens.expiry_date,
+                    };
+                    await user.save();
+                }
+            }
+
+            // Generate App Tokens
+            const accessToken = generateAccessToken(user);
+            const refreshToken = generateRefreshToken(user);
+
+            // Set refresh token cookie
+            res.cookie('refreshToken', refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+                maxAge: 7 * 24 * 60 * 60 * 1000,
+            });
+
+            // Redirect to client with access token
+            return res.redirect(`${process.env.CLIENT_URL}/mail/inbox?token=${accessToken}`);
+        }
+
+        // ─────────────────────────────────────────────
+        // CASE 2: CONNECT GMAIL (state === userId)
+        // ─────────────────────────────────────────────
+        const userId = state;
+        if (!userId) {
+            return res.redirect(`${process.env.CLIENT_URL}/mail/inbox?error=missing_state`);
+        }
 
         // Save tokens to user
         await User.findByIdAndUpdate(userId, {
@@ -56,14 +124,15 @@ router.get('/google/callback', async (req, res) => {
                 refreshToken: tokens.refresh_token,
                 expiryDate: tokens.expiry_date,
             },
-            googleEmail: profile.emailAddress,
+            googleEmail: email,
             isGmailConnected: true,
         });
 
         res.redirect(`${process.env.CLIENT_URL}/mail/inbox?gmail=connected`);
+
     } catch (error) {
         console.error('Google OAuth callback error:', error.message);
-        res.redirect(`${process.env.CLIENT_URL}/mail/inbox?error=oauth_failed`);
+        res.redirect(`${process.env.CLIENT_URL}/login?error=oauth_failed`);
     }
 });
 

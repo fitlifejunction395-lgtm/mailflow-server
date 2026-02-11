@@ -9,6 +9,7 @@ const connectDB = require('./config/db');
 const { createTransporter } = require('./services/emailTransport');
 
 const app = express();
+app.set('trust proxy', 1); // Trust Vercel proxy
 
 // ── Security Middleware ──────────────────────
 app.use(helmet());
